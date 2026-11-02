@@ -294,3 +294,158 @@ input[type="password"] {
   color: var(--ink);
   font-size: 0.82rem;
 }
+
+/* ----------- Chat personalization, emoji picker and Liptus ----------- */
+.chat-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.tool-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 7px 10px !important;
+  font-size: 0.82rem;
+  border-radius: 9px;
+  cursor: pointer;
+}
+label.tool-button {
+  background: var(--mine);
+  color: #fff;
+  font-weight: 600;
+}
+label.tool-button:hover { background: #0b4957; }
+.emoji-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.emoji-choice {
+  padding: 5px;
+  min-width: 38px;
+  min-height: 38px;
+  font-size: 1.25rem;
+  background: transparent;
+  color: inherit;
+  border: 1px solid transparent;
+}
+.emoji-choice:hover {
+  background: var(--theirs);
+  border-color: var(--line);
+}
+
+/* The uploaded background is a personal preference on each device. */
+.messages {
+  position: relative;
+  isolation: isolate;
+  background-color: #f7fafc;
+  background-image: var(--chat-background-image, none);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+.messages .message {
+  box-shadow: 0 1px 5px rgba(20, 35, 45, 0.08);
+}
+
+/* Liptus sits in a small play area above the composer. Pointer events support
+   both a mouse and touch screen; touch-action prevents page scrolling while dragging. */
+.liptus-stage {
+  position: relative;
+  flex: 0 0 100px;
+  min-height: 100px;
+  overflow: hidden;
+  border-top: 1px dashed var(--line);
+  background: linear-gradient(180deg, #f7fbff, #e8f5ef);
+}
+.liptus {
+  position: absolute;
+  left: 12px;
+  top: 8px;
+  display: grid;
+  justify-items: center;
+  gap: 0;
+  min-width: 78px;
+  padding: 2px 7px 5px;
+  border-radius: 16px;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  transition: filter 120ms ease, transform 120ms ease;
+}
+.liptus.being-dragged {
+  cursor: grabbing;
+  transform: scale(1.08);
+  filter: drop-shadow(0 4px 5px rgba(20, 35, 45, .2));
+  z-index: 2;
+}
+.cat-emoji {
+  display: block;
+  font-size: 2.55rem;
+  line-height: 1.05;
+  transform-origin: bottom center;
+}
+.liptus-name {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #285744;
+}
+.liptus-hint {
+  font-size: 0.68rem;
+  color: #5d6f7c;
+}
+.liptus.purring .cat-emoji {
+  animation: liptus-purr 180ms ease-in-out 5 alternate;
+}
+@keyframes liptus-purr {
+  from { transform: rotate(-9deg) scale(1.03); }
+  to { transform: rotate(9deg) scale(1.1); }
+}
+
+@media (max-width: 600px) {
+  body {
+    padding: 0;
+    display: block;
+    min-height: 100dvh;
+  }
+  .chat {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    min-height: 420px;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+  .auth {
+    width: calc(100% - 24px);
+    height: auto;
+    min-height: 0;
+    margin: 12px auto;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+  .chat-header { padding: 12px; }
+  .chat-tools { gap: 6px; padding: 8px; }
+  .tool-button { flex: 0 1 auto; }
+  .messages { padding: 12px; }
+  .message { max-width: 88%; }
+  .composer {
+    padding: 10px;
+    gap: 6px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+  .composer button { padding: 10px 13px; }
+  .liptus-stage { flex-basis: 86px; min-height: 86px; }
+  .liptus { min-width: 70px; }
+}

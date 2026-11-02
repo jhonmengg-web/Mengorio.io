@@ -463,3 +463,148 @@ function showBotMessage(text) {
   messageList.appendChild(item);
   messageList.scrollTop = messageList.scrollHeight;
 }
+
+// --------- 13. Chat background picker (local to each device/browser) ---------
+const backgroundPicker = document.getElementById("background-picker");
+const clearBackgroundBtn = document.getElementById("clear-background");
+const messagesArea = document.getElementById("messages");
+const emojiToggle = document.getElementById("emoji-toggle");
+const emojiPicker = document.getElementById("emoji-picker");
+
+// Use a data URL so the selected image stays on this device and is not uploaded
+// to Supabase. Each friend can choose their own background.
+try {
+  const savedBackground = localStorage.getItem("mengorio-chat-background");
+  if (savedBackground) messagesArea.style.setProperty("--chat-background-image", `url("${savedBackground}")`);
+} catch (error) {
+  console.info("Background preference storage is unavailable in this browser.");
+}
+
+backgroundPicker?.addEventListener("change", () => {
+  const file = backgroundPicker.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    alert("Please choose an image file.");
+    backgroundPicker.value = "";
+    return;
+  }
+  // Keep the upload modest so localStorage limits are less likely to be reached.
+  if (file.size > 3 * 1024 * 1024) {
+    alert("Please choose an image smaller than 3 MB for the chat background.");
+    backgroundPicker.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = String(reader.result);
+    messagesArea.style.setProperty("--chat-background-image", `url("${dataUrl}")`);
+    try {
+      localStorage.setItem("mengorio-chat-background", dataUrl);
+    } catch (error) {
+      alert("The background is set for this session, but this browser could not save it for next time.");
+    }
+  };
+  reader.readAsDataURL(file);
+});
+
+clearBackgroundBtn?.addEventListener("click", () => {
+  messagesArea.style.removeProperty("--chat-background-image");
+  try { localStorage.removeItem("mengorio-chat-background"); } catch (error) {}
+  if (backgroundPicker) backgroundPicker.value = "";
+});
+
+emojiToggle?.addEventListener("click", () => {
+  const opening = emojiPicker.hidden;
+  emojiPicker.hidden = !opening;
+  emojiToggle.setAttribute("aria-expanded", String(opening));
+});
+
+document.querySelectorAll(".emoji-choice").forEach((button) => {
+  button.addEventListener("click", () => {
+    const emoji = button.textContent.trim();
+    const start = messageInput.selectionStart ?? messageInput.value.length;
+    const end = messageInput.selectionEnd ?? messageInput.value.length;
+    messageInput.value = messageInput.value.slice(0, start) + emoji + messageInput.value.slice(end);
+    messageInput.focus();
+    const cursor = start + emoji.length;
+    messageInput.setSelectionRange(cursor, cursor);
+  });
+});
+
+// --------- 14. Liptus: draggable, touch-friendly pet cat ---------
+const liptus = document.getElementById("liptus");
+const liptusStage = document.getElementById("liptus-stage");
+let liptusDragging = false;
+let liptusMoved = false;
+let liptusStartX = 0;
+let liptusStartY = 0;
+let liptusLeft = 12;
+let liptusTop = 8;
+let liptusPointerOffsetX = 0;
+let liptusPointerOffsetY = 0;
+
+function placeLiptus(left, top) {
+  if (!liptusStage || !liptus) return;
+  const maxLeft = Math.max(0, liptusStage.clientWidth - liptus.offsetWidth);
+  const maxTop = Math.max(0, liptusStage.clientHeight - liptus.offsetHeight);
+  liptusLeft = Math.min(maxLeft, Math.max(0, left));
+  liptusTop = Math.min(maxTop, Math.max(0, top));
+  liptus.style.left = `${liptusLeft}px`;
+  liptus.style.top = `${liptusTop}px`;
+}
+
+liptus?.addEventListener("pointerdown", (event) => {
+  if (event.button !== undefined && event.button !== 0) return;
+  liptusDragging = true;
+  liptusMoved = false;
+  const rect = liptus.getBoundingClientRect();
+  const stageRect = liptusStage.getBoundingClientRect();
+  liptusPointerOffsetX = event.clientX - rect.left;
+  liptusPointerOffsetY = event.clientY - rect.top;
+  liptusStartX = event.clientX;
+  liptusStartY = event.clientY;
+  liptus.setPointerCapture?.(event.pointerId);
+  liptus.classList.add("being-dragged");
+  event.preventDefault();
+});
+
+liptus?.addEventListener("pointermove", (event) => {
+  if (!liptusDragging) return;
+  if (Math.abs(event.clientX - liptusStartX) + Math.abs(event.clientY - liptusStartY) > 5) {
+    liptusMoved = true;
+  }
+  const stageRect = liptusStage.getBoundingClientRect();
+  placeLiptus(
+    event.clientX - stageRect.left - liptusPointerOffsetX,
+    event.clientY - stageRect.top - liptusPointerOffsetY
+  );
+});
+
+function finishLiptusDrag() {
+  if (!liptusDragging) return;
+  liptusDragging = false;
+  liptus.classList.remove("being-dragged");
+  if (!liptusMoved) {
+    liptus.classList.add("purring");
+    liptus.querySelector(".liptus-hint").textContent = "purr~ 💕";
+    window.setTimeout(() => {
+      liptus.classList.remove("purring");
+      liptus.querySelector(".liptus-hint").textContent = "pet me!";
+    }, 1100);
+  }
+}
+liptus?.addEventListener("pointerup", finishLiptusDrag);
+liptus?.addEventListener("pointercancel", finishLiptusDrag);
+liptus?.addEventListener("lostpointercapture", finishLiptusDrag);
+liptus?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    liptus.classList.add("purring");
+    liptus.querySelector(".liptus-hint").textContent = "purr~ 💕";
+    window.setTimeout(() => {
+      liptus.classList.remove("purring");
+      liptus.querySelector(".liptus-hint").textContent = "pet me!";
+    }, 1100);
+  }
+});
+window.addEventListener("resize", () => placeLiptus(liptusLeft, liptusTop));
