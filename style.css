@@ -477,3 +477,11 @@ label.tool-button:hover { background: #0b4957; }
 #chat-screen input { -webkit-user-select: text; user-select: text; }
 #chat-screen.shielded .messages, #chat-screen.shielded .liptus-stage { filter: blur(22px); }
 @media print { #chat-screen { display: none !important; } }
+
+img.cat-emoji {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
