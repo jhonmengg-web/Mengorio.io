@@ -49,9 +49,9 @@
 </div>
 
     <div class="chat-tools" aria-label="Chat customization">
-      <label class="tool-button" for="background-picker" title="Choose a chat background">🖼️ Background</label>
-      <input id="background-picker" type="file" accept="image/*" hidden>
-      <button id="clear-background" type="button" class="ghost tool-button">Clear background</button>
+      <label class="tool-button" for="background-picker" title="Choose a chat background">🖼️ Cover photo (shared)</label>
+      <input id="background-picker" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+      <button id="clear-background" type="button" class="ghost tool-button">Reset cover</button>
       <button id="emoji-toggle" type="button" class="ghost tool-button" aria-expanded="false" aria-controls="emoji-picker">😊 Emoji</button>
     </div>
     <div id="emoji-picker" class="emoji-picker" hidden aria-label="Choose an emoji">
@@ -69,19 +69,28 @@
       <button type="button" class="emoji-choice" aria-label="Smiling face with hearts">🥰</button>
     </div>
 
-    <ul id="messages" class="messages" aria-live="polite"></ul>
-
-    <div id="liptus-stage" class="liptus-stage" aria-label="Interactive pet cat">
+    <div class="chat-body">
+      <ul id="messages" class="messages" aria-live="polite"></ul>
+      <div id="liptus-stage" class="liptus-stage" aria-label="Interactive pet">
       <div id="liptus" class="liptus" role="button" tabindex="0" aria-label="Liptus the pet cat. Tap to pet, drag to move.">
         <span class="cat-emoji" aria-hidden="true">🐶</span>
         <span class="liptus-name">Liptus</span>
         <span class="liptus-hint">pet me!</span>
       </div>
+      </div>
+    </div>
+    <p id="typing-indicator" class="typing" aria-live="polite"></p>
+    <div id="photo-preview" class="photo-preview" hidden>
+      <img id="preview-img" alt="Selected photo preview">
+      <span id="preview-status">Ready to send</span>
+      <button type="button" id="preview-cancel" class="ghost">Cancel</button>
     </div>
 
     <form id="message-form" class="composer" autocomplete="off">
       <label for="message-input" class="visually-hidden">Message</label>
-      <input id="message-input" type="text" maxlength="500" required
+      <label class="photo-btn" for="photo-picker" title="Send a photo">📷</label>
+      <input id="photo-picker" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+      <input id="message-input" type="text" maxlength="500"
              placeholder="Type a message or /weather Manila">
       <button type="submit">Send</button>
     </form>
