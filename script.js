@@ -23,6 +23,7 @@ const messageInput = document.getElementById("message-input");
 // --------- 3. What the app remembers while it runs ---------
 let currentUser = null; // the logged-in user, or null
 const names = {}; // user id -> display name
+const avatars = {}; // user id -> profile photo path
 let channel = null; // the realtime connection (used in Part 4)
 let presenceChannel = null;
 
@@ -96,6 +97,7 @@ async function startChat(user) {
   startPresence(user);
   await loadCover();
   listenForCover();
+  listenForReactions();
   startTyping();
   messageInput.focus();
 }
@@ -105,7 +107,8 @@ function stopChat() {
   stopPresence();
   if (coverChannel) sb.removeChannel(coverChannel);
   if (typingChannel) sb.removeChannel(typingChannel);
-  coverChannel = typingChannel = null;
+  if (reactionChannel) sb.removeChannel(reactionChannel);
+  coverChannel = typingChannel = reactionChannel = null;
   if (channel) sb.removeChannel(channel);
   channel = null;
   messageList.innerHTML = "";
@@ -119,6 +122,7 @@ function showMessage(msg) {
   // Skip it if it is already on the screen (this matters in Part 4)
   if (messageList.querySelector('[data-id="' + msg.id + '"]')) return;
 
+  msgCache[msg.id] = msg;
   const isMine = msg.user_id === currentUser.id;
   const item = document.createElement("li");
   item.className = isMine ? "message mine" : "message";
@@ -127,6 +131,7 @@ function showMessage(msg) {
   const author = document.createElement("span");
   author.className = "author";
   author.textContent = names[msg.user_id] || "Unknown";
+  author.prepend(avatarEl(msg.user_id));
 
   const text = document.createElement("p");
   // textContent (not innerHTML) keeps the page safe from injected HTML
@@ -140,6 +145,13 @@ function showMessage(msg) {
 
   item.dataset.img = msg.image_path || "";
   item.append(author);
+  if (msg.reply_to) {
+    const o = msgCache[msg.reply_to];
+    const quote = document.createElement("div");
+    quote.className = "quote";
+    quote.textContent = o ? (names[o.user_id] || "Unknown") + ": " + (o.content || "📷 Photo") : "Original message";
+    item.append(quote);
+  }
   if (msg.image_path) {
     const img = document.createElement("img");
     img.className = "chat-image";
@@ -163,7 +175,11 @@ function showMessage(msg) {
 
     item.appendChild(unsendBtn);
   }
+  const chips = document.createElement("div");
+  chips.className = "reactions";
+  item.append(chips, buildActions(msg));
   messageList.appendChild(item);
+  renderReactions(msg.id);
   messageList.scrollTop = messageList.scrollHeight;
 }
 
@@ -187,12 +203,13 @@ messageForm.addEventListener("submit", async (event) => {
     }
     const { data, error } = await sb
       .from("messages")
-      .insert({ content: content || null, image_path })
+      .insert({ content: content || null, image_path, reply_to: replyTo ? replyTo.id : null })
       .select()
       .single();
     if (error) throw error;
     messageInput.value = "";
     clearPreview();
+    clearReply();
     showMessage(data);
   } catch (e) {
     previewStatus.textContent = "Failed. Try again.";
@@ -205,23 +222,30 @@ messageForm.addEventListener("submit", async (event) => {
 async function loadNames() {
   const { data, error } = await sb
     .from("profiles")
-    .select("id, display_name");
+    .select("id, display_name, avatar_path");
   if (error) return console.error(error);
 
   data.forEach((p) => {
     names[p.id] = p.display_name;
+    avatars[p.id] = p.avatar_path;
   });
 }
 
 async function loadMessages() {
   const { data, error } = await sb
     .from("messages")
-    .select("id, user_id, content, image_path, created_at")
+    .select("id, user_id, content, image_path, reply_to, created_at")
     .order("created_at", { ascending: false })
     .limit(50);
 
   if (error) return console.error(error);
 
+  const ids = data.map((m) => m.id);
+  const { data: rx } = ids.length
+    ? await sb.from("reactions").select("message_id, user_id, emoji").in("message_id", ids)
+    : { data: [] };
+  reactions = {};
+  (rx || []).forEach(addReaction);
   messageList.innerHTML = "";
   data.reverse().forEach(showMessage);
 }
@@ -256,10 +280,11 @@ async function nameFor(userId) {
   if (!names[userId]) {
     const { data } = await sb
       .from("profiles")
-      .select("display_name")
+      .select("display_name, avatar_path")
       .eq("id", userId)
       .single();
     names[userId] = data ? data.display_name : "Unknown";
+    avatars[userId] = data ? data.avatar_path : null;
   }
   return names[userId];
 }
@@ -275,7 +300,7 @@ function listenForNewMessages() {
       async (payload) => {
         await nameFor(payload.new.user_id);
         showMessage(payload.new);
-        if (payload.new.user_id !== currentUser.id) petReact();
+        if (payload.new.user_id !== currentUser.id) { petReact(); notifyMessage(payload.new); }
       }
     )
     .on(
@@ -379,6 +404,7 @@ function renderOnlineUsers() {
     const item = document.createElement("li");
     item.textContent =
       displayName + (userId === currentUser?.id ? " (You)" : "");
+    item.prepend(avatarEl(userId));
     onlineUsers.appendChild(item);
   }
 
@@ -749,4 +775,186 @@ function petReact() {
   liptus.classList.add("purring");
   hint.textContent = "new message!";
   window.setTimeout(() => { liptus.classList.remove("purring"); hint.textContent = "pet me!"; }, 1100);
+}
+
+// --------- 15. Replies and emoji reactions ---------
+const QUICK = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
+let replyTo = null;
+let reactions = {};   // message id -> [{ message_id, user_id, emoji }]
+const msgCache = {};  // message id -> message (for reply quotes)
+let reactionChannel = null;
+const replyBar = document.getElementById("reply-bar");
+
+function startReply(msg) {
+  replyTo = msg;
+  document.getElementById("reply-text").textContent =
+    "Replying to " + (names[msg.user_id] || "Unknown") + ": " + (msg.content || "📷 Photo");
+  replyBar.hidden = false;
+  messageInput.focus();
+}
+function clearReply() { replyTo = null; replyBar.hidden = true; }
+document.getElementById("reply-cancel").addEventListener("click", clearReply);
+
+function buildActions(msg) {
+  const bar = document.createElement("div");
+  bar.className = "msg-actions";
+  const reply = document.createElement("button");
+  reply.type = "button";
+  reply.textContent = "↩ Reply";
+  reply.addEventListener("click", () => startReply(msg));
+  const more = document.createElement("button");
+  more.type = "button";
+  more.textContent = "😊";
+  more.setAttribute("aria-label", "React");
+  const row = document.createElement("div");
+  row.className = "react-row";
+  row.hidden = true;
+  QUICK.forEach((e) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = e;
+    b.addEventListener("click", () => { row.hidden = true; toggleReaction(msg.id, e); });
+    row.append(b);
+  });
+  more.addEventListener("click", () => { row.hidden = !row.hidden; });
+  bar.append(reply, more, row);
+  return bar;
+}
+
+function addReaction(r) {
+  const list = (reactions[r.message_id] = reactions[r.message_id] || []);
+  if (!list.some((x) => x.user_id === r.user_id && x.emoji === r.emoji)) list.push(r);
+}
+function dropReaction(r) {
+  reactions[r.message_id] = (reactions[r.message_id] || [])
+    .filter((x) => !(x.user_id === r.user_id && x.emoji === r.emoji));
+}
+function renderReactions(id) {
+  const box = messageList.querySelector('[data-id="' + id + '"] .reactions');
+  if (!box) return;
+  box.replaceChildren();
+  const counts = {};
+  (reactions[id] || []).forEach((r) => {
+    const c = (counts[r.emoji] = counts[r.emoji] || { n: 0, mine: false });
+    c.n++;
+    if (r.user_id === currentUser.id) c.mine = true;
+  });
+  for (const [emoji, c] of Object.entries(counts)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip" + (c.mine ? " mine" : "");
+    b.textContent = emoji + " " + c.n;
+    b.addEventListener("click", () => toggleReaction(id, emoji));
+    box.append(b);
+  }
+}
+async function toggleReaction(id, emoji) {
+  const has = (reactions[id] || []).some((r) => r.user_id === currentUser.id && r.emoji === emoji);
+  const row = { message_id: id, user_id: currentUser.id, emoji };
+  const { error } = has
+    ? await sb.from("reactions").delete().eq("message_id", id).eq("user_id", currentUser.id).eq("emoji", emoji)
+    : await sb.from("reactions").insert({ message_id: id, emoji });
+  if (error) return alert("Could not react: " + error.message);
+  if (has) dropReaction(row); else addReaction(row);
+  renderReactions(id);
+}
+function listenForReactions() {
+  reactionChannel = sb
+    .channel("reactions")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "reactions" },
+      (p) => { addReaction(p.new); renderReactions(p.new.message_id); })
+    .on("postgres_changes", { event: "DELETE", schema: "public", table: "reactions" },
+      (p) => { dropReaction(p.old); renderReactions(p.old.message_id); })
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" },
+      (p) => {
+        names[p.new.id] = p.new.display_name;
+        avatars[p.new.id] = p.new.avatar_path;
+        refreshAvatars(p.new.id);
+      })
+    .subscribe();
+}
+
+// --------- 16. Profile photos (each user edits only their own) ---------
+function avatarEl(uid) {
+  let el;
+  if (avatars[uid]) {
+    el = document.createElement("img");
+    el.src = imageUrl(avatars[uid]);
+    el.alt = "";
+  } else {
+    el = document.createElement("span");
+    el.dataset.initial = (names[uid] || "?").charAt(0).toUpperCase();
+  }
+  el.className = "avatar" + (avatars[uid] ? "" : " ph");
+  el.dataset.uid = uid;
+  return el;
+}
+function refreshAvatars(uid) {
+  document.querySelectorAll('[data-uid="' + uid + '"]').forEach((e) => e.replaceWith(avatarEl(uid)));
+}
+async function squareAvatar(file) {
+  const bmp = await createImageBitmap(file);
+  const s = Math.min(bmp.width, bmp.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 256;
+  canvas.getContext("2d").drawImage(bmp, (bmp.width - s) / 2, (bmp.height - s) / 2, s, s, 0, 0, 256, 256);
+  return new Promise((ok, fail) =>
+    canvas.toBlob((b) => (b ? ok(b) : fail(new Error("Could not process image"))), "image/jpeg", 0.85));
+}
+document.getElementById("avatar-picker").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const problem = checkImage(file);
+  if (problem) return alert(problem);
+  try {
+    const uid = currentUser.id;
+    const path = "avatars/" + uid + "/" + Date.now() + ".jpg";
+    const up = await sb.storage.from(IMG_BUCKET).upload(path, await squareAvatar(file), { contentType: "image/jpeg" });
+    if (up.error) throw up.error;
+    const { data, error } = await sb.from("profiles").update({ avatar_path: path }).eq("id", uid).select();
+    if (error || !data.length) throw error || new Error("Profile not updated. Run setup-profiles.sql first.");
+    const old = avatars[uid];
+    avatars[uid] = path;
+    if (old) sb.storage.from(IMG_BUCKET).remove([old]);
+    refreshAvatars(uid);
+  } catch (err) {
+    alert("Could not change your photo: " + err.message);
+  }
+});
+
+// --------- 17. Message alerts: sound + browser notification ---------
+const ding = new Audio("notify.mp3");
+const notifBtn = document.getElementById("notif-btn");
+let notifMuted = false;
+try { notifMuted = localStorage.getItem("notify-muted") === "1"; } catch (e) {}
+function updateNotifBtn() {
+  notifBtn.textContent = notifMuted ? "🔕 Alerts off"
+    : ("Notification" in window && Notification.permission === "default") ? "🔔 Enable alerts" : "🔔 Alerts on";
+}
+notifBtn.addEventListener("click", async () => {
+  if ("Notification" in window && Notification.permission === "default") {
+    await Notification.requestPermission();
+  } else {
+    notifMuted = !notifMuted;
+    try { localStorage.setItem("notify-muted", notifMuted ? "1" : "0"); } catch (e) {}
+  }
+  if (!notifMuted) ding.play().catch(() => {});
+  updateNotifBtn();
+});
+updateNotifBtn();
+function notifyMessage(msg) {
+  if (notifMuted) return;
+  ding.currentTime = 0;
+  ding.play().catch(() => {});
+  if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+    try {
+      const n = new Notification(names[msg.user_id] || "New message", {
+        body: msg.content || "📷 Photo",
+        icon: avatars[msg.user_id] ? imageUrl(avatars[msg.user_id]) : "pet.png",
+        tag: "chat",
+      });
+      n.onclick = () => { window.focus(); n.close(); };
+    } catch (e) {}
+  }
 }

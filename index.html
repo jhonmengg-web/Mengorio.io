@@ -53,6 +53,9 @@
       <input id="background-picker" type="file" accept="image/jpeg,image/png,image/webp" hidden>
       <button id="clear-background" type="button" class="ghost tool-button">Reset cover</button>
       <button id="emoji-toggle" type="button" class="ghost tool-button" aria-expanded="false" aria-controls="emoji-picker">😊 Emoji</button>
+      <label class="tool-button" for="avatar-picker" title="Change your profile photo">👤 My photo</label>
+      <input id="avatar-picker" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+      <button id="notif-btn" type="button" class="ghost tool-button">🔔 Alerts</button>
     </div>
     <div id="emoji-picker" class="emoji-picker" hidden aria-label="Choose an emoji">
       <button type="button" class="emoji-choice" aria-label="Grinning face">😀</button>
@@ -80,6 +83,10 @@
       </div>
     </div>
     <p id="typing-indicator" class="typing" aria-live="polite"></p>
+    <div id="reply-bar" class="reply-bar" hidden>
+      <span id="reply-text"></span>
+      <button type="button" id="reply-cancel" class="ghost">Cancel</button>
+    </div>
     <div id="photo-preview" class="photo-preview" hidden>
       <img id="preview-img" alt="Selected photo preview">
       <span id="preview-status">Ready to send</span>
